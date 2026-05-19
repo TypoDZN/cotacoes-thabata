@@ -1,0 +1,5 @@
+Abre o PowerShell
+Digita cd "D:\Alexandre\AI\Claude\thabata"
+Digita python -m streamlit run app.py
+Minimiza o PowerShell (não fecha!)
+Usa o sistema no navegador
