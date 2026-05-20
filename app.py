@@ -303,7 +303,7 @@ with tab1:
                         f"{op['nome'].title()}  —  "
                         f"{fmt(op['preco'])}"
                     )
-                    if st.checkbox(label, value=(i == 0), key=f"lista_chk_{r['linha']}_{i}"):
+                    if st.checkbox(label, value=(i == 0), key=f"lista_chk_{i}_{id(r)}"):
                         selecionados.append(op)
                 selecoes_lista[r["linha"]] = selecionados if selecionados else [opcoes[0]]
 
@@ -406,7 +406,7 @@ with tab2:
                         f"{fmt(op['preco'])}"
                     )
                     # Pré-marca o mais barato (primeiro da lista ordenada)
-                    if st.checkbox(label, value=(i == 0), key=f"chk_{r['linha']}_{i}"):
+                    if st.checkbox(label, value=(i == 0), key=f"chk_{i}_{id(r)}"):
                         selecionados.append(op)
 
                 # Garante pelo menos uma opção selecionada
