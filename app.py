@@ -279,21 +279,22 @@ with tab1:
         resultados_lista = st.session_state["lista"]
         nao_enc_lista = st.session_state.get("lista_nao", [])
 
-        tem_multiplos = any(len(r["opcoes"]) > 1 for r in resultados_lista)
         selecoes_lista: dict[str, list[dict]] = {}
 
-        if tem_multiplos:
-            st.divider()
-            st.subheader("Escolha o(s) fornecedor(es)")
+        st.divider()
+        st.subheader(f"{len(resultados_lista)} produto(s) encontrado(s)")
+        if any(len(r["opcoes"]) > 1 for r in resultados_lista):
             st.caption(
-                "Marque um ou mais fornecedores por produto. "
-                "Quando mais de um for marcado, todas as opções aparecem no texto final."
+                "✅ = fornecedor único, já confirmado.  "
+                "Itens com mais de uma opção: marque os que deseja incluir."
             )
 
         for r in resultados_lista:
             opcoes = r["opcoes"]
             if len(opcoes) == 1:
-                selecoes_lista[r["linha"]] = [opcoes[0]]
+                op = opcoes[0]
+                st.write(f"✅ **{r['linha'].title()}** — {op['fornecedor']} — {fmt(op['preco'])}")
+                selecoes_lista[r["linha"]] = [op]
             else:
                 st.write(f"**{r['linha'].title()}**")
                 selecionados = []
@@ -380,22 +381,23 @@ with tab2:
         resultados = st.session_state["cot"]
         nao_enc2 = st.session_state.get("cot_nao", [])
 
-        tem_multiplos = any(len(r["opcoes"]) > 1 for r in resultados)
         selecoes: dict[str, list[dict]] = {}
 
-        if tem_multiplos:
-            st.divider()
-            st.subheader("Escolha o(s) fornecedor(es)")
+        st.divider()
+        st.subheader(f"{len(resultados)} produto(s) encontrado(s)")
+        if any(len(r["opcoes"]) > 1 for r in resultados):
             st.caption(
-                "Marque um ou mais fornecedores por produto. "
-                "Quando mais de um for marcado, todas as opções aparecem no texto final."
+                "✅ = fornecedor único, já confirmado.  "
+                "Itens com mais de uma opção: marque os que deseja incluir."
             )
 
         for r in resultados:
             opcoes = r["opcoes"]  # já ordenadas por preço (mais barato primeiro)
 
             if len(opcoes) == 1:
-                selecoes[r["linha"]] = [opcoes[0]]
+                op = opcoes[0]
+                st.write(f"✅ **{r['query'].title()}** — {op['fornecedor']} — {fmt(op['preco'])}")
+                selecoes[r["linha"]] = [op]
             else:
                 st.write(f"**{r['query'].title()}**")
                 selecionados = []
@@ -405,11 +407,9 @@ with tab2:
                         f"{op['nome'].title()}  —  "
                         f"{fmt(op['preco'])}"
                     )
-                    # Pré-marca o mais barato (primeiro da lista ordenada)
                     if st.checkbox(label, value=(i == 0), key=f"chk_{i}_{id(r)}"):
                         selecionados.append(op)
 
-                # Garante pelo menos uma opção selecionada
                 selecoes[r["linha"]] = selecionados if selecionados else [opcoes[0]]
 
         if st.button("Gerar cotação", type="primary", key="cotacao_gerar"):
