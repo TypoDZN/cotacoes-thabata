@@ -62,9 +62,18 @@ def normalizar(texto: str) -> str:
 
 # ── Busca no banco ───────────────────────────────────────────────────────────
 
-def buscar(query: str, conn) -> list[dict]:
+def _filtro_fornecedor(fornecedores: list[str]) -> tuple[str, list]:
+    """Retorna cláusula SQL e parâmetros para filtrar por fornecedores."""
+    if not fornecedores:
+        return "", []
+    placeholders = ", ".join("?" * len(fornecedores))
+    return f" AND fornecedor IN ({placeholders})", list(fornecedores)
+
+
+def buscar(query: str, conn, fornecedores: list[str] | None = None) -> list[dict]:
     """
     Busca por palavras inteiras na coluna normalizada (sem acento).
+    - fornecedores: lista de fornecedores a considerar (None = todos).
     - Stop words (de, da, com…) são ignoradas.
     - Matching por palavra inteira: 'chá' não bate em 'cachaça'.
     - Fuzzy inteligente: pré-filtra pelas palavras que existem exatamente,
@@ -77,6 +86,7 @@ def buscar(query: str, conn) -> list[dict]:
     if not palavras:
         return []
 
+    forn_sql, forn_params = _filtro_fornecedor(fornecedores or [])
     min_palavras = min(2, len(palavras))
 
     # ── Busca exata por palavra inteira ──────────────────────────────────────
@@ -84,8 +94,8 @@ def buscar(query: str, conn) -> list[dict]:
         sub = palavras[:n]
         cond = " AND ".join("(' ' || nome_busca || ' ') LIKE ?" for _ in sub)
         rows = conn.execute(
-            f"SELECT fornecedor, nome_produto, preco FROM produtos WHERE {cond}",
-            [f"% {p} %" for p in sub],
+            f"SELECT fornecedor, nome_produto, preco FROM produtos WHERE {cond}{forn_sql}",
+            [f"% {p} %" for p in sub] + forn_params,
         ).fetchall()
         if rows:
             return [{"fornecedor": r[0], "nome": r[1], "preco": r[2]} for r in rows]
@@ -95,8 +105,8 @@ def buscar(query: str, conn) -> list[dict]:
     palavras_que_batem = [
         p for p in palavras
         if conn.execute(
-            "SELECT 1 FROM produtos WHERE (' ' || nome_busca || ' ') LIKE ? LIMIT 1",
-            [f"% {p} %"],
+            f"SELECT 1 FROM produtos WHERE (' ' || nome_busca || ' ') LIKE ?{forn_sql} LIMIT 1",
+            [f"% {p} %"] + forn_params,
         ).fetchone()
     ]
 
@@ -104,12 +114,13 @@ def buscar(query: str, conn) -> list[dict]:
     if palavras_que_batem:
         cond = " AND ".join("(' ' || nome_busca || ' ') LIKE ?" for _ in palavras_que_batem)
         candidatos = conn.execute(
-            f"SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos WHERE {cond}",
-            [f"% {p} %" for p in palavras_que_batem],
+            f"SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos WHERE {cond}{forn_sql}",
+            [f"% {p} %" for p in palavras_que_batem] + forn_params,
         ).fetchall()
     else:
         candidatos = conn.execute(
-            "SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos"
+            f"SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos WHERE 1=1{forn_sql}",
+            forn_params,
         ).fetchall()
 
     if not candidatos:
@@ -288,6 +299,16 @@ with st.sidebar:
     for nome, qtd in _forn:
         st.caption(f"**{nome}**: {qtd} produtos")
 
+# ── Lista de fornecedores disponíveis (usada nas duas abas) ──────────────────
+
+def _fornecedores_disponiveis() -> list[str]:
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT DISTINCT fornecedor FROM produtos ORDER BY fornecedor"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
 # ── Abas principais ──────────────────────────────────────────────────────────
 
 tab1, tab2 = st.tabs(["📋 Lista de Produtos", "💰 Cotação Semanal"])
@@ -300,6 +321,15 @@ with tab1:
         "Cole a lista que o cliente enviou. Um produto por linha.  \n"
         "Quando um produto estiver em mais de um fornecedor, você escolhe quais opções incluir."
     )
+
+    _todos_forn1 = _fornecedores_disponiveis()
+    forn_selecionados1 = st.multiselect(
+        "Fornecedores:",
+        options=_todos_forn1,
+        default=_todos_forn1,
+        key="lista_forn",
+    )
+
     entrada1 = st.text_area(
         "Lista do cliente:",
         height=220,
@@ -313,7 +343,9 @@ with tab1:
         linhas = [l for l in todas if not e_cabecalho(l)]
         if ignoradas:
             st.info(f"Linha(s) ignorada(s) como cabeçalho: {', '.join(ignoradas)}")
-        if not linhas:
+        if not forn_selecionados1:
+            st.warning("Selecione pelo menos um fornecedor.")
+        elif not linhas:
             st.warning("Cole algum produto antes de buscar.")
         else:
             conn = sqlite3.connect(DB_PATH)
@@ -322,7 +354,7 @@ with tab1:
 
             with st.spinner("Buscando..."):
                 for linha in linhas:
-                    opcoes = sorted(buscar(linha, conn), key=lambda x: x["preco"])
+                    opcoes = sorted(buscar(linha, conn, forn_selecionados1), key=lambda x: x["preco"])
                     if opcoes:
                         resultados_lista.append({"linha": linha, "opcoes": opcoes})
                     else:
@@ -387,6 +419,15 @@ with tab2:
         "Cole a lista com quantidades. Um produto por linha.  \n"
         "Formatos aceitos: `produto - 2 cx` · `produto 2cx` · `2 produto` · `produto: 2`"
     )
+
+    _todos_forn2 = _fornecedores_disponiveis()
+    forn_selecionados2 = st.multiselect(
+        "Fornecedores:",
+        options=_todos_forn2,
+        default=_todos_forn2,
+        key="cotacao_forn",
+    )
+
     entrada2 = st.text_area(
         "Lista com quantidades:",
         height=220,
@@ -404,7 +445,9 @@ with tab2:
         linhas = [l for l in todas if not e_cabecalho(l)]
         if ignoradas:
             st.info(f"Linha(s) ignorada(s) como cabeçalho: {', '.join(ignoradas)}")
-        if not linhas:
+        if not forn_selecionados2:
+            st.warning("Selecione pelo menos um fornecedor.")
+        elif not linhas:
             st.warning("Cole algum produto antes de buscar.")
         else:
             conn = sqlite3.connect(DB_PATH)
@@ -414,7 +457,7 @@ with tab2:
             with st.spinner("Buscando..."):
                 for linha in linhas:
                     nome_q, qty, unit = parse_cotacao(linha)
-                    opcoes = buscar(nome_q, conn)
+                    opcoes = buscar(nome_q, conn, forn_selecionados2)
                     if opcoes:
                         resultados.append(
                             {
