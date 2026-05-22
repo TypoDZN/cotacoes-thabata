@@ -54,9 +54,10 @@ def normalizar(texto: str) -> str:
 def buscar(query: str, conn) -> list[dict]:
     """
     Busca por palavras inteiras na coluna normalizada (sem acento).
-    - Stop words (de, da, com…) são ignoradas para não contaminar resultados.
+    - Stop words (de, da, com…) são ignoradas.
     - Matching por palavra inteira: 'chá' não bate em 'cachaça'.
-    - Para queries de 2+ palavras, nunca reduz abaixo de 2 antes do fuzzy.
+    - Fuzzy inteligente: pré-filtra pelas palavras que existem exatamente,
+      depois busca palavra-a-palavra para as que falharam (ex: merlusa→merluza).
     """
     palavras = [
         normalizar(p) for p in query.split()
@@ -67,11 +68,9 @@ def buscar(query: str, conn) -> list[dict]:
 
     min_palavras = min(2, len(palavras))
 
+    # ── Busca exata por palavra inteira ──────────────────────────────────────
     for n in range(len(palavras), min_palavras - 1, -1):
         sub = palavras[:n]
-        # Envolve o nome com espaços para garantir match de palavra inteira:
-        # ' CACHACA ' LIKE '% CHA %' → não bate  ✓
-        # ' CHA CAPIM ' LIKE '% CHA %' → bate     ✓
         cond = " AND ".join("(' ' || nome_busca || ' ') LIKE ?" for _ in sub)
         rows = conn.execute(
             f"SELECT fornecedor, nome_produto, preco FROM produtos WHERE {cond}",
@@ -80,18 +79,52 @@ def buscar(query: str, conn) -> list[dict]:
         if rows:
             return [{"fornecedor": r[0], "nome": r[1], "preco": r[2]} for r in rows]
 
-    # Fuzzy fallback
-    todos = conn.execute(
-        "SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos"
-    ).fetchall()
-    if not todos:
+    # ── Fuzzy inteligente ─────────────────────────────────────────────────────
+    # Passo 1: quais palavras existem individualmente na base?
+    palavras_que_batem = [
+        p for p in palavras
+        if conn.execute(
+            "SELECT 1 FROM produtos WHERE (' ' || nome_busca || ' ') LIKE ? LIMIT 1",
+            [f"% {p} %"],
+        ).fetchone()
+    ]
+
+    # Passo 2: pré-filtrar candidatos pelas palavras que existem exatamente
+    if palavras_que_batem:
+        cond = " AND ".join("(' ' || nome_busca || ' ') LIKE ?" for _ in palavras_que_batem)
+        candidatos = conn.execute(
+            f"SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos WHERE {cond}",
+            [f"% {p} %" for p in palavras_que_batem],
+        ).fetchall()
+    else:
+        candidatos = conn.execute(
+            "SELECT fornecedor, nome_produto, nome_busca, preco FROM produtos"
+        ).fetchall()
+
+    if not candidatos:
         return []
 
+    # Passo 3: para palavras que não bateram exatamente, comparar palavra-a-palavra
+    nao_encontradas = [p for p in palavras if p not in palavras_que_batem]
+
+    if nao_encontradas:
+        resultado = []
+        for row in candidatos:
+            palavras_produto = row[2].split()
+            # Cada palavra não encontrada precisa ter um par próximo no produto
+            if all(
+                max((fuzz.ratio(u, w) for w in palavras_produto), default=0) >= 75
+                for u in nao_encontradas
+            ):
+                resultado.append({"fornecedor": row[0], "nome": row[1], "preco": row[3]})
+        return resultado
+
+    # Passo 4: todas as palavras existem mas a combinação falhou → fuzzy padrão
     query_norm = normalizar(query)
-    nomes_norm = [r[2] for r in todos]
+    nomes_norm = [r[2] for r in candidatos]
     matches = process.extract(query_norm, nomes_norm, scorer=fuzz.token_set_ratio, limit=10)
     return [
-        {"fornecedor": todos[i][0], "nome": todos[i][1], "preco": todos[i][3]}
+        {"fornecedor": candidatos[i][0], "nome": candidatos[i][1], "preco": candidatos[i][3]}
         for _, score, i in matches
         if score >= THRESHOLD
     ]
