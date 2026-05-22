@@ -12,10 +12,12 @@ DB_PATH = os.path.join("database", "produtos.db")
 THRESHOLD = 62
 
 _STOP_WORDS = {
-    "DE", "DA", "DO", "DOS", "DAS", "DI", "COM", "PARA", "E", "EM",
+    "DE", "DA", "DO", "DOS", "DAS", "DI", "PARA", "E", "EM",
     "NO", "NA", "NOS", "NAS", "A", "O", "OS", "AS", "UM", "UMA",
-    "S", "C", "SEM", "SOB", "AO", "AOS", "A",
+    "SOB", "AO", "AOS",
 }
+# COM e SEM foram mantidos fora das stop words intencionalmente:
+# "água com gás" ≠ "água sem gás"
 
 
 @st.cache_resource
@@ -39,6 +41,15 @@ def fmt(valor) -> str:
 
 
 # ── Normalização para busca sem acento ──────────────────────────────────────
+
+def _threshold(palavra: str) -> int:
+    """Threshold de similaridade proporcional ao tamanho da palavra.
+    Palavras curtas exigem match mais preciso para evitar falsos positivos."""
+    n = len(palavra)
+    if n <= 4: return 90
+    if n <= 6: return 85
+    return 80
+
 
 def normalizar(texto: str) -> str:
     return (
@@ -113,7 +124,7 @@ def buscar(query: str, conn) -> list[dict]:
             palavras_produto = row[2].split()
             # Cada palavra não encontrada precisa ter um par próximo no produto
             if all(
-                max((fuzz.ratio(u, w) for w in palavras_produto), default=0) >= 75
+                max((fuzz.ratio(u, w) for w in palavras_produto), default=0) >= _threshold(u)
                 for u in nao_encontradas
             ):
                 resultado.append({"fornecedor": row[0], "nome": row[1], "preco": row[3]})
