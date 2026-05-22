@@ -11,6 +11,12 @@ import importar_dados
 DB_PATH = os.path.join("database", "produtos.db")
 THRESHOLD = 62
 
+_STOP_WORDS = {
+    "DE", "DA", "DO", "DOS", "DAS", "DI", "COM", "PARA", "E", "EM",
+    "NO", "NA", "NOS", "NAS", "A", "O", "OS", "AS", "UM", "UMA",
+    "S", "C", "SEM", "SOB", "AO", "AOS", "A",
+}
+
 
 @st.cache_resource
 def inicializar_banco():
@@ -47,11 +53,15 @@ def normalizar(texto: str) -> str:
 
 def buscar(query: str, conn) -> list[dict]:
     """
-    Busca por palavras-chave na coluna normalizada (sem acento).
-    Para queries de 2+ palavras, nunca reduz abaixo de 2 palavras antes de
-    tentar busca fuzzy — evita retornos genéricos por palavras soltas.
+    Busca por palavras inteiras na coluna normalizada (sem acento).
+    - Stop words (de, da, com…) são ignoradas para não contaminar resultados.
+    - Matching por palavra inteira: 'chá' não bate em 'cachaça'.
+    - Para queries de 2+ palavras, nunca reduz abaixo de 2 antes do fuzzy.
     """
-    palavras = [normalizar(p) for p in query.split() if len(p) > 1]
+    palavras = [
+        normalizar(p) for p in query.split()
+        if len(p) > 1 and normalizar(p) not in _STOP_WORDS
+    ]
     if not palavras:
         return []
 
@@ -59,10 +69,13 @@ def buscar(query: str, conn) -> list[dict]:
 
     for n in range(len(palavras), min_palavras - 1, -1):
         sub = palavras[:n]
-        cond = " AND ".join("nome_busca LIKE ?" for _ in sub)
+        # Envolve o nome com espaços para garantir match de palavra inteira:
+        # ' CACHACA ' LIKE '% CHA %' → não bate  ✓
+        # ' CHA CAPIM ' LIKE '% CHA %' → bate     ✓
+        cond = " AND ".join("(' ' || nome_busca || ' ') LIKE ?" for _ in sub)
         rows = conn.execute(
             f"SELECT fornecedor, nome_produto, preco FROM produtos WHERE {cond}",
-            [f"%{p}%" for p in sub],
+            [f"% {p} %" for p in sub],
         ).fetchall()
         if rows:
             return [{"fornecedor": r[0], "nome": r[1], "preco": r[2]} for r in rows]
