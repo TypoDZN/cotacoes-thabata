@@ -138,19 +138,24 @@ def importar_cia_whisky(conn, base, fornecedor):
     return len(produtos)
 
 
-def importar_apetito(conn):
-    path = encontrar_arquivo("apetito")
+def importar_padrao(conn, base, fornecedor):
+    """
+    Importador genérico para fornecedores com colunas:
+    codigo | descricao | unidade | peso_medio | estoque | preco
+    Usado por Apetito Foods, Fênix e qualquer futuro fornecedor no mesmo formato.
+    """
+    path = encontrar_arquivo(base)
     if not path:
-        print("  AVISO: arquivo não encontrado — apetito.xlsx/.xls/.csv")
+        print(f"  AVISO: arquivo não encontrado — {base}.xlsx/.xls/.csv")
         return 0
 
     df = ler_arquivo(path)
-    col_produto  = _col(df, "descri", "produto", "nome")
-    col_preco    = _col(df, "preco", "preço", "valor", "prç")
-    col_unidade  = _col(df, "unidade", "un", "und")
+    col_produto = _col(df, "descri", "produto", "nome")
+    col_preco   = _col(df, "preco", "preço", "valor", "prç")
+    col_unidade = _col(df, "unidade", "un", "und")
 
     if not col_produto or not col_preco:
-        print(f"  ERRO apetito — colunas encontradas: {list(df.columns)}")
+        print(f"  ERRO {base} — colunas encontradas: {list(df.columns)}")
         return 0
 
     produtos = []
@@ -167,13 +172,13 @@ def importar_apetito(conn):
 
         un = str(row.get(col_unidade, "")).strip() if col_unidade else ""
         nome_final = f"{nome} ({un.upper()})" if un and un.upper() != "NAN" else nome
-        produtos.append(("Apetito Foods", nome_final.upper(), normalizar(nome_final), preco))
+        produtos.append((fornecedor, nome_final.upper(), normalizar(nome_final), preco))
 
     conn.executemany(
         "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
         produtos,
     )
-    print(f"  Apetito Foods ({os.path.basename(path)}): {len(produtos)} produtos")
+    print(f"  {fornecedor} ({os.path.basename(path)}): {len(produtos)} produtos")
     return len(produtos)
 
 
@@ -246,7 +251,8 @@ def main():
     total = 0
     total += importar_cia_whisky(conn, "cia_whisky_alimentos", "Cia do Whisky")
     total += importar_cia_whisky(conn, "cia_whisky_bebidas",   "Cia do Whisky")
-    total += importar_apetito(conn)
+    total += importar_padrao(conn, "apetito", "Apetito Foods")
+    total += importar_padrao(conn, "fenix",   "Fênix")
     total += importar_forte(conn)
 
     conn.commit()
