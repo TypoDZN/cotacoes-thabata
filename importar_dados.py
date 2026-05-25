@@ -182,6 +182,55 @@ def importar_padrao(conn, base, fornecedor):
     return len(produtos)
 
 
+def importar_fenix(conn):
+    """
+    Importador específico para Fênix.
+    Diferenças em relação ao formato padrão:
+    - Preço na coluna 'TAB A+' (não 'preco')
+    - Nome do produto em 'DESCRICAO' + marca em 'MARCA' (colunas separadas)
+    """
+    path = encontrar_arquivo("fenix")
+    if not path:
+        print("  AVISO: arquivo não encontrado — fenix.xlsx/.xls/.csv")
+        return 0
+
+    df = ler_arquivo(path)
+
+    col_produto = _col(df, "descri", "produto", "nome")
+    col_marca   = _col(df, "marca")
+    col_preco   = next(
+        (c for c in df.columns if str(c).strip().upper() == "TAB A+"), None
+    )
+
+    if not col_produto or not col_preco:
+        print(f"  ERRO fenix — colunas encontradas: {list(df.columns)}")
+        return 0
+
+    produtos = []
+    for _, row in df.iterrows():
+        nome = str(row.get(col_produto, "")).strip()
+        if not nome or nome.upper() == "NAN":
+            continue
+
+        if col_marca:
+            marca = str(row.get(col_marca, "")).strip()
+            if marca and marca.upper() != "NAN":
+                nome = f"{nome} {marca}"
+
+        preco = limpar_preco(row.get(col_preco))
+        if not preco:
+            continue
+
+        produtos.append(("Fênix", nome.upper(), normalizar(nome), preco))
+
+    conn.executemany(
+        "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
+        produtos,
+    )
+    print(f"  Fênix ({os.path.basename(path)}): {len(produtos)} produtos")
+    return len(produtos)
+
+
 def importar_forte(conn):
     path = encontrar_arquivo("forte")
     if not path:
@@ -252,7 +301,7 @@ def main():
     total += importar_cia_whisky(conn, "cia_whisky_alimentos", "Cia do Whisky")
     total += importar_cia_whisky(conn, "cia_whisky_bebidas",   "Cia do Whisky")
     total += importar_padrao(conn, "apetito", "Apetito Foods")
-    total += importar_padrao(conn, "fenix",   "Fênix")
+    total += importar_fenix(conn)
     total += importar_forte(conn)
 
     conn.commit()
