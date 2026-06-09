@@ -198,9 +198,11 @@ def importar_fenix(conn):
 
     col_produto = _col(df, "descri", "produto", "nome")
     col_marca   = _col(df, "marca")
-    col_preco   = next(
+
+    # Excel tem 'TAB A+'; CSV convertido de PDF tem 'preco' — tenta os dois
+    col_preco = next(
         (c for c in df.columns if str(c).strip().upper() == "TAB A+"), None
-    )
+    ) or _col(df, "preco", "preço", "valor", "prç")
 
     if not col_produto or not col_preco:
         print(f"  ERRO fenix — colunas encontradas: {list(df.columns)}")
@@ -211,7 +213,10 @@ def importar_fenix(conn):
         nome = str(row.get(col_produto, "")).strip()
         if not nome or nome.upper() == "NAN":
             continue
+        if re.search(r"fam[ií]lia\s*:", nome, re.IGNORECASE):
+            continue
 
+        # No Excel, marca vem separada — concatena. No CSV já vem junto.
         if col_marca:
             marca = str(row.get(col_marca, "")).strip()
             if marca and marca.upper() != "NAN":
