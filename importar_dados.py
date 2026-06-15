@@ -22,6 +22,13 @@ def normalizar(texto: str) -> str:
     )
 
 
+def normalizar_busca(texto: str) -> str:
+    """Normaliza para indexação: sem acento, maiúsculas, e espaço entre letra e dígito.
+    Ex: NUTELLA3KG → NUTELLA 3KG, para que buscas por 'nutella' encontrem o produto."""
+    s = normalizar(texto)
+    return re.sub(r'([A-Z])(\d)', r'\1 \2', s)
+
+
 def limpar_preco(valor):
     """Converte qualquer formato de preço (R$1.234,56 ou 12.50) para float."""
     if pd.isna(valor):
@@ -128,7 +135,7 @@ def importar_cia_whisky(conn, base, fornecedor):
         nome = str(row.get(col_produto, "")).strip()
         preco = limpar_preco(row.get(col_preco))
         if nome and nome.upper() != "NAN" and preco:
-            produtos.append((fornecedor, nome.upper(), normalizar(nome), preco))
+            produtos.append((fornecedor, nome.upper(), normalizar_busca(nome), preco))
 
     conn.executemany(
         "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
@@ -172,7 +179,7 @@ def importar_padrao(conn, base, fornecedor):
 
         un = str(row.get(col_unidade, "")).strip() if col_unidade else ""
         nome_final = f"{nome} ({un.upper()})" if un and un.upper() != "NAN" else nome
-        produtos.append((fornecedor, nome_final.upper(), normalizar(nome_final), preco))
+        produtos.append((fornecedor, nome_final.upper(), normalizar_busca(nome_final), preco))
 
     conn.executemany(
         "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
@@ -226,7 +233,7 @@ def importar_fenix(conn):
         if not preco:
             continue
 
-        produtos.append(("Fênix", nome.upper(), normalizar(nome), preco))
+        produtos.append(("Fênix", nome.upper(), normalizar_busca(nome), preco))
 
     conn.executemany(
         "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
@@ -260,7 +267,7 @@ def importar_forte(conn):
         if not preco:
             continue
 
-        produtos.append(("Forte Alimentos", nome.upper(), normalizar(nome), preco))
+        produtos.append(("Forte Alimentos", nome.upper(), normalizar_busca(nome), preco))
 
     conn.executemany(
         "INSERT INTO produtos (fornecedor, nome_produto, nome_busca, preco) VALUES (?, ?, ?, ?)",
