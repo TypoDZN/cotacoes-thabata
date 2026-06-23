@@ -51,13 +51,21 @@ def _threshold(palavra: str) -> int:
     return 80
 
 
+_SINONIMOS = {
+    "SHOYO": "SHOYU",
+}
+
+
 def normalizar(texto: str) -> str:
-    return (
+    s = (
         unicodedata.normalize("NFD", texto)
         .encode("ascii", "ignore")
         .decode("ascii")
         .upper()
     )
+    for de, para in _SINONIMOS.items():
+        s = s.replace(de, para)
+    return s
 
 
 # ── Busca no banco ───────────────────────────────────────────────────────────

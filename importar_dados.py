@@ -22,11 +22,19 @@ def normalizar(texto: str) -> str:
     )
 
 
+_SINONIMOS = {
+    "SHOYO": "SHOYU",
+}
+
+
 def normalizar_busca(texto: str) -> str:
     """Normaliza para indexação: sem acento, maiúsculas, e espaço entre letra e dígito.
     Ex: NUTELLA3KG → NUTELLA 3KG, para que buscas por 'nutella' encontrem o produto."""
     s = normalizar(texto)
-    return re.sub(r'([A-Z])(\d)', r'\1 \2', s)
+    s = re.sub(r'([A-Z])(\d)', r'\1 \2', s)
+    for de, para in _SINONIMOS.items():
+        s = s.replace(de, para)
+    return s
 
 
 def limpar_preco(valor):
