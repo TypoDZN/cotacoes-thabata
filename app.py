@@ -53,6 +53,7 @@ def _threshold(palavra: str) -> int:
 
 _SINONIMOS = {
     "SHOYO": "SHOYU",
+    "CATCHUP": "KETCHUP",
 }
 
 

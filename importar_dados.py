@@ -24,6 +24,7 @@ def normalizar(texto: str) -> str:
 
 _SINONIMOS = {
     "SHOYO": "SHOYU",
+    "CATCHUP": "KETCHUP",
 }
 
 
